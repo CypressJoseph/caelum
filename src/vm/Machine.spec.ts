@@ -13,6 +13,11 @@ const hello = new Program('hello.aer', [
   { op: 'load', subject: new ASymbol('Kernel') },
   { op: 'send', subject: new ASymbol('dbg'), argCount: 1 }
 ])
+const missing = new Program('miss.aer', [
+  { op: 'push', subject: new AString('hello world') },
+  { op: 'load', subject: new ASymbol('Kernel') },
+  { op: 'send', subject: new ASymbol('dbz'), argCount: 1 }
+])
 
 describe('Machine', () => {
   describe('manual operation', () => {
@@ -44,6 +49,11 @@ describe('Machine', () => {
     const greeter = new Machine(hello)
     greeter.fly()
     expect(greeter.stdout).toEqual('hello world')
+  })
+
+  it('method missing', () => {
+    const miss = new Machine(missing)
+    expect(() => miss.fly()).toThrow('Method missing on (kernel): dbz')
   })
 
   test.todo('calls used-defined functions')

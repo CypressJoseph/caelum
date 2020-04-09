@@ -1,14 +1,30 @@
 import chalk from 'chalk'
 import assertNever from 'assert-never'
 import Stack from './Stack'
+import { Store } from './Store'
+
 // eslint-disable-next-line no-unused-vars
 import Program from '../cael-lang/cael/Program'
-import { Store } from './Store'
 
 export abstract class AObject {
   instanceMethods: Store<AFunction> = new Store()
+  // constructor () {
+  // }
+
+  bootstrapped = false
+  bootstrap () {
+    if (!this.bootstrapped) {
+      this.defineInstanceMethod('methodMissing', new AFunction('methodMissing',
+        (machine: Aer.Machine, meth: AString, args: AObject[]) => {
+          throw new Error(`Method missing on ${this.pretty}: ${meth.value}`)
+        }
+      ))
+      this.bootstrapped = true
+    }
+  }
 
   getInstanceMethod (methodName: string): AFunction {
+    this.bootstrap()
     return this.instanceMethods.get(methodName)
   }
 
@@ -116,7 +132,7 @@ export namespace Aer {
         const result = this.invoke(receiver, instanceMethod, args)
         this.push(result)
       } else {
-        throw new Error(`Method missing for ${receiver}: ${methodName}`)
+        this.call(receiver, 'methodMissing', [new ASymbol(methodName), ...args])
       }
     }
 
@@ -127,28 +143,39 @@ export namespace Aer {
     }
   }
 
-  export class Dirigible extends Machine {
-    public stdout: String = ''
-    private instructionPointer: InstructionPointer
-    private activeStack: Stack<AObject>
-
+  class FlightNavigation {
+    public instructionPointer: InstructionPointer
+    public activeStack: Stack<AObject>
     constructor (public code: Program) {
-      super()
       this.instructionPointer = new InstructionPointer(code)
       this.activeStack = new Stack()
     }
+  }
 
-    protected get ip () { return this.instructionPointer }
-    protected get stack () { return this.activeStack }
-
-    public get pilot () { return new DirigiblePilot(this) }
-
+  export class Dirigible extends Machine {
     static globals: { [key: string]: AObject } = { Kernel: new AKernel() }
 
-    fly (): Recording {
+    public stdout: String = ''
+    public stderr: String = ''
+    protected nav: FlightNavigation
+
+    constructor (public code: Program) {
+      super()
+      this.nav = new FlightNavigation(code)
+    }
+
+    protected get ip () { return this.nav.instructionPointer }
+    protected get stack () { return this.nav.activeStack }
+    protected get frame (): Frame {
       const { ip, stack } = this
       const flightPlan: Frame = { ip, stack, ctx: new Store(Dirigible.globals) }
-      const flightRecording: Recording = this.pilot.execute(flightPlan)
+      return flightPlan
+    }
+
+    get pilot () { return new DirigiblePilot(this) }
+
+    fly (): Recording {
+      const flightRecording: Recording = this.pilot.execute(this.frame)
       return flightRecording
     }
 
@@ -158,7 +185,7 @@ export namespace Aer {
     }
 
     load (sym: ASymbol): void {
-      console.log('manual machine load can only access globals!')
+      console.warn('Note: manual Machine.load can only access globals')
       this.push(Dirigible.globals[sym.value])
     }
   }
@@ -179,7 +206,7 @@ export namespace Aer {
     private frames: Stack<Frame> = new Stack<Frame>()
 
     constructor (private vessel: Dirigible) {
-      console.log('New pilot created')
+      console.log('New pilot created for vessel: ' + vessel)
     }
 
     get frame () { return this.frames.top }
